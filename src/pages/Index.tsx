@@ -1,25 +1,77 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
 import CryptoCard from '@/components/CryptoCard';
 import PriceChart from '@/components/PriceChart';
 import ExchangeCalculator from '@/components/ExchangeCalculator';
 import WalletBalance from '@/components/WalletBalance';
 import TransactionHistory from '@/components/TransactionHistory';
+import PriceAlert from '@/components/PriceAlert';
+import { useToast } from '@/hooks/use-toast';
+import { Toaster } from '@/components/ui/toaster';
 
-const cryptoData = [
-  { name: 'Bitcoin', symbol: 'BTC', price: 43250.50, change24h: 2.45, icon: '₿' },
-  { name: 'Ethereum', symbol: 'ETH', price: 2280.75, change24h: -1.23, icon: 'Ξ' },
-  { name: 'Tether', symbol: 'USDT', price: 1.00, change24h: 0.01, icon: '₮' },
-  { name: 'Binance Coin', symbol: 'BNB', price: 315.20, change24h: 3.78, icon: '🔶' },
-  { name: 'Solana', symbol: 'SOL', price: 98.45, change24h: 5.32, icon: '◎' },
-  { name: 'Cardano', symbol: 'ADA', price: 0.58, change24h: -2.15, icon: '🔷' },
-];
+interface CryptoData {
+  name: string;
+  symbol: string;
+  price: number;
+  change24h: number;
+  icon: string;
+}
+
+const CRYPTO_API_URL = 'https://functions.poehali.dev/b72f8cce-0cde-4445-8fd6-ce7d4f3a31b5';
 
 const btcPriceData = [42800, 42950, 43100, 42900, 43200, 43400, 43250, 43500, 43350, 43250];
 const ethPriceData = [2250, 2270, 2290, 2260, 2280, 2300, 2275, 2285, 2295, 2280];
 
 export default function Index() {
   const [activeSection, setActiveSection] = useState('home');
+  const [cryptoData, setCryptoData] = useState<CryptoData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState<{ symbol: string; name: string; change: number } | null>(null);
+  const { toast } = useToast();
+
+  const fetchCryptoData = async () => {
+    try {
+      const response = await fetch(CRYPTO_API_URL);
+      const result = await response.json();
+      
+      if (result.data) {
+        const previousData = cryptoData;
+        setCryptoData(result.data);
+        setLoading(false);
+
+        if (previousData.length > 0) {
+          result.data.forEach((crypto: CryptoData) => {
+            const prev = previousData.find(p => p.symbol === crypto.symbol);
+            if (prev && Math.abs(crypto.change24h) >= 5 && Math.abs(prev.change24h) < 5) {
+              setAlert({
+                symbol: crypto.symbol,
+                name: crypto.name,
+                change: crypto.change24h
+              });
+              toast({
+                title: `${crypto.name} (${crypto.symbol})`,
+                description: `${crypto.change24h >= 0 ? 'Рост' : 'Падение'} ${Math.abs(crypto.change24h).toFixed(2)}%`,
+                variant: crypto.change24h >= 0 ? 'default' : 'destructive',
+              });
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch crypto data:', error);
+      toast({
+        title: 'Ошибка загрузки',
+        description: 'Не удалось обновить котировки',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchCryptoData();
+    const interval = setInterval(fetchCryptoData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const renderSection = () => {
     switch (activeSection) {
@@ -80,13 +132,31 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Navigation activeSection={activeSection} onSectionChange={setActiveSection} />
       
+      {alert && (
+        <PriceAlert
+          symbol={alert.symbol}
+          name={alert.name}
+          change={alert.change}
+          onClose={() => setAlert(null)}
+        />
+      )}
+
       <main className="container mx-auto px-4 py-8">
-        {renderSection()}
+        {loading && activeSection === 'home' ? (
+          <div className="text-center py-20">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <p className="mt-4 text-muted-foreground">Загрузка котировок...</p>
+          </div>
+        ) : (
+          renderSection()
+        )}
       </main>
 
       <footer className="border-t mt-16 py-8 text-center text-sm text-muted-foreground">
         <p>© 2024 CryptoEx. Торгуйте ответственно. Криптовалюта — это высокорисковый актив.</p>
       </footer>
+      
+      <Toaster />
     </div>
   );
 }

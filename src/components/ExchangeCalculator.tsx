@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,18 +12,36 @@ interface Crypto {
   icon: string;
 }
 
-const cryptos: Crypto[] = [
-  { symbol: 'BTC', name: 'Bitcoin', rate: 43250, icon: '₿' },
-  { symbol: 'ETH', name: 'Ethereum', rate: 2280, icon: 'Ξ' },
-  { symbol: 'USDT', name: 'Tether', rate: 1, icon: '₮' },
-  { symbol: 'BNB', name: 'Binance Coin', rate: 315, icon: '🔶' },
-  { symbol: 'SOL', name: 'Solana', rate: 98, icon: '◎' },
-];
+const CRYPTO_API_URL = 'https://functions.poehali.dev/b72f8cce-0cde-4445-8fd6-ce7d4f3a31b5';
 
 export default function ExchangeCalculator() {
   const [fromAmount, setFromAmount] = useState<string>('1');
   const [fromCrypto, setFromCrypto] = useState<string>('BTC');
   const [toCrypto, setToCrypto] = useState<string>('ETH');
+  const [cryptos, setCryptos] = useState<Crypto[]>([]);
+
+  useEffect(() => {
+    const fetchRates = async () => {
+      try {
+        const response = await fetch(CRYPTO_API_URL);
+        const result = await response.json();
+        if (result.data) {
+          const mapped = result.data.map((c: any) => ({
+            symbol: c.symbol,
+            name: c.name,
+            rate: c.price,
+            icon: c.icon
+          }));
+          setCryptos(mapped);
+        }
+      } catch (error) {
+        console.error('Failed to fetch rates:', error);
+      }
+    };
+    fetchRates();
+    const interval = setInterval(fetchRates, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const calculateExchange = () => {
     const amount = parseFloat(fromAmount) || 0;
